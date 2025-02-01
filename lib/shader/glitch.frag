@@ -21,70 +21,66 @@ uniform sampler2D uChannel0;
 out vec4 fragColor;
 
 //2D (returns 0 - 1)
-float random2d(vec2 n) { 
+float random2d(vec2 n) {
     return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 43758.5453);
 }
 
-float randomRange (in vec2 seed, in float min, in float max) {
-		return min + random2d(seed) * (max - min);
+float randomRange(in vec2 seed, in float min, in float max) {
+    return min + random2d(seed) * (max - min);
 }
 
 // return 1 if v inside 1d range
 float insideRange(float v, float bottom, float top) {
-   return step(bottom, v) - step(top, v);
+    return step(bottom, v) - step(top, v);
 }
-   
-void mainImage(out vec4 fragColor, in vec2 fragCoord)
-{
+
+vec4 glitch(in vec2 coord) {
     float time = floor(uTime * uSpeed * 60.0);
-    vec2 uv = fragCoord.xy / uResolution.xy;
-    
+    vec2 uv = coord.xy / uResolution.xy;
+
     // Copy original color
-    vec3 outColor = texture(uChannel0, uv).rgb;
-    float randomChance = random2d(vec2(time, 9545.0));
-    bool shouldGlitch = randomChance <= uChance / MAX_CHANCE; 
-    
-    if (shouldGlitch) {
+    vec4 colors = texture(uChannel0, uv).rgba;
+    bool enable = random2d(vec2(time, 9545.0)) <= uChance / MAX_CHANCE;
+
+    if(enable) {
 
         // Randomly offset slices horizontally
-        if(uShowDistortions == 1.0){
+        if(uShowDistortions == 1.0) {
             float maxOffset = uDistortionLevel;
 
-            for (float i = 0.0; i < MAX_ITERATIONS; i += 1.0) {
-                if (i >= uGlitchAmount){break;}
-                float sliceY = random2d(vec2(time , 2345.0 + float(i)));
-                float sliceH = random2d(vec2(time , 9035.0 + float(i))) * 0.25;
-                float hOffset = randomRange(vec2(time , 9625.0 + float(i)), -maxOffset, maxOffset);
+            for(float i = 0.0; i < MAX_ITERATIONS; i += 1.0) {
+                if(i >= uGlitchAmount){break;}
+                float sliceY = random2d(vec2(time, 2345.0 + float(i)));
+                float sliceH = random2d(vec2(time, 9035.0 + float(i))) * 0.25;
+                float hOffset = randomRange(vec2(time, 9625.0 + float(i)), -maxOffset, maxOffset);
                 vec2 uvOff = uv;
                 uvOff.x += hOffset;
-                if (insideRange(uv.y, sliceY, fract(sliceY + sliceH)) == 1.0){
-                    outColor = texture(uChannel0, uvOff).rgb;
+                if(insideRange(uv.y, sliceY, fract(sliceY + sliceH)) == 1.0) {
+                    colors = texture(uChannel0, uvOff).rgba;
                 }
             }
         }
 
         // Do slight offset on one entire channel
-        if(uShowColorChannels == 1.0){
-            float maxColOffset = uColorChannelLevel;
+        if(uShowColorChannels == 1.0) {
+            float maxOffset = uColorChannelLevel;
             float rnd = random2d(vec2(time, 9545.0));
-            float xRange = (uShiftColorChannelsX == 1.0) ? randomRange(vec2(time , 9545.0), -maxColOffset, maxColOffset) : 0.0;
-            float yRange = (uShiftColorChannelsY == 1.0) ? randomRange(vec2(time , 7205.0), -maxColOffset, maxColOffset) : 0.0;
-            vec2 colOffset = vec2(xRange, yRange);
-            if (rnd < 0.33){
-                outColor.r = texture(uChannel0, uv + colOffset).r;
-            } else if (rnd < 0.66){
-                outColor.g = texture(uChannel0, uv + colOffset).g;
+            float xRange = (uShiftColorChannelsX == 1.0) ? randomRange(vec2(time, 9545.0), -maxOffset, maxOffset) : 0.0;
+            float yRange = (uShiftColorChannelsY == 1.0) ? randomRange(vec2(time, 7205.0), -maxOffset, maxOffset) : 0.0;
+            vec2 offset = vec2(xRange, yRange);
+            if(rnd < 0.33) {
+                colors.r = texture(uChannel0, uv + offset).r;
+            } else if(rnd < 0.66) {
+                colors.g = texture(uChannel0, uv + offset).g;
             } else {
-                outColor.b = texture(uChannel0, uv + colOffset).b;  
+                colors.b = texture(uChannel0, uv + offset).b;
             }
         }
     }
-  
-    fragColor = vec4(outColor, 1.0);
- 
+
+    return colors;
 }
 
-void main(){
-    vec2 pos = FlutterFragCoord().xy;
-    mainImage(fragColor, pos);
+void main() {
+    fragColor=glitch(FlutterFragCoord().xy);
 }
