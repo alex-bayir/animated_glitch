@@ -15,7 +15,7 @@ void main() {
 
     await widgetTester.pumpWidget(MaterialApp(
       home: Scaffold(
-        body: AnimatedGlitch.shader(child: child),
+        body: AnimatedGlitch(child: child),
       ),
     ));
     await widgetTester.pump();
@@ -23,28 +23,4 @@ void main() {
     expect(find.byKey(key), findsOneWidget);
   });
 
-  testWidgets('glitch display child correctly', (widgetTester) async {
-    const key = Key('key');
-    final child = Container(
-      key: key,
-      height: 300,
-      width: 300,
-      color: Colors.red,
-    );
-
-    final controller = AnimatedGlitchController();
-
-    await widgetTester.pumpWidget(MaterialApp(
-      home: Scaffold(
-        body: AnimatedGlitch(
-          child: child,
-          controller: controller,
-        ),
-      ),
-    ));
-    await widgetTester.pump();
-
-    expect(find.byKey(key), findsOneWidget);
-    controller.stop();
-  });
 }

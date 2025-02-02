@@ -1,160 +1,136 @@
-import 'package:animated_glitch/src/controller/animated_glitch_controller.dart';
-import 'package:animated_glitch/src/color_channel/color_channel_widget.dart';
-import 'package:animated_glitch/src/core/glitch_color_filter.dart';
-import 'package:animated_glitch/src/distortion/distortion_widget.dart';
-import 'package:animated_glitch/src/widget/multiple_glitch_color_filtered.dart';
-import 'package:flutter/material.dart';
+import 'dart:math';
+import 'package:flutter/scheduler.dart';
+import 'package:flutter/widgets.dart';
+import 'package:flutter_shaders/flutter_shaders.dart';
 
-import 'animated_glitch_with_shader.dart';
+class AnimatedGlitch extends StatefulWidget{
+  /// The color channel level.
+  final double colorChannelLevel;
 
-/// {@category With shader}
-/// {@category Without shader}
-/// Shortcuts.
-abstract class AnimatedGlitch implements Widget {
-  /// Shortcut to create a [AnimatedGlitchWithoutShader].
-  const factory AnimatedGlitch({
-    required Widget child,
-    required AnimatedGlitchController controller,
-    bool showColorChannels,
-    bool showDistortions,
-    List<GlitchColorFilter> filters,
-    Key? key,
-  }) = AnimatedGlitchWithoutShader;
+  /// The distortion level.
+  final double distortionLevel;
 
-  /// Shortcut to create a [AnimatedGlitchWithShader].
-  const factory AnimatedGlitch.shader({
-    required Widget child,
-    double colorChannelLevel,
-    double distortionLevel,
-    double glitchAmount,
-    double speed,
-    int chance,
-    bool showDistortions,
-    bool showColorChannels,
-    double speedStep,
-    bool isColorsShiftedVertically,
-    bool isColorsShiftedHorizontally,
-    bool isActive,
-    Key? key,
-  }) = AnimatedGlitchWithShader;
-}
+  /// The amount of glitch.
+  final double glitchAmount;
 
-/// {@category Without shader}
-/// Widget to display a glitch effect.
-///
-/// It is driven by the provided [AnimatedGlitchController].
-final class AnimatedGlitchWithoutShader extends StatefulWidget
-    implements AnimatedGlitch {
-  /// The widget to display.
-  final Widget child;
+  /// The speed of the glitch.
+  final double speed;
 
-  /// {@macro animated_glitch_controller}
-  final AnimatedGlitchController controller;
-
-  /// Whether to display the color channels.
-  final bool showColorChannels;
+  /// The chance of the glitch.
+  final int chance;
 
   /// Whether to display the distortions.
   final bool showDistortions;
 
-  /// The color filters to apply.
-  ///
-  /// It is applied before the distortions and the color channels shifting.
-  final List<GlitchColorFilter> filters;
+  /// Whether to display the color channels.
+  final bool showColorChannels;
 
-  /// @nodoc
-  const AnimatedGlitchWithoutShader({
-    required this.child,
-    required this.controller,
+  /// The widget to display.
+  final Widget child;
+
+  /// The time increment.
+  /// You may think of it as a second speed value but with more precision.
+  final double speedStep;
+
+  /// Whether the glitch is active.
+  final bool isActive;
+
+  /// Whether color channels are shifted by Y.
+  final bool isColorsShiftedVertically;
+
+  /// Whether color channels are shifted by x.
+  final bool isColorsShiftedHorizontally;
+
+  const AnimatedGlitch({
+    super.key,
+    this.chance = 50,
+    this.speed = 1,
+    this.distortionLevel = 0.035,
+    this.colorChannelLevel = 0.023,
     this.showColorChannels = true,
     this.showDistortions = true,
-    this.filters = const <GlitchColorFilter>[],
-    super.key,
-  });
+    this.glitchAmount = 3,
+    this.speedStep = 0.0042,
+    this.isActive = true,
+    this.isColorsShiftedVertically = false,
+    this.isColorsShiftedHorizontally = true,
+    required this.child
+  })  : assert(glitchAmount <= 10,'glitchAmount must be less than or equal to 10'),
+        assert(speed >= 0 && speed <= 1, 'speed must be between 0 and 1'),
+        assert(chance >= 0 && chance <= 100,'chance must be between 0 and 100'),
+        assert(distortionLevel >= 0 && distortionLevel <= 1,'distortionLevel must be between 0 and 1'),
+        assert(colorChannelLevel >= 0 && colorChannelLevel <= 1,'colorChannelLevel must be between 0 and 100');
 
   @override
-  State<AnimatedGlitchWithoutShader> createState() =>
-      _AnimatedGlitchWithoutShaderState();
+  State<StatefulWidget> createState() => AnimatedGlitchState();
 }
 
-/// @nodoc
-class _AnimatedGlitchWithoutShaderState
-    extends State<AnimatedGlitchWithoutShader> {
-  final _key = GlobalKey();
+class AnimatedGlitchState extends State<AnimatedGlitch> {
 
-  @override
-  Widget build(BuildContext context) {
-    final composition = widget.filters.isEmpty
-        ? widget.child
-        : MultipleGlitchColorFiltered(
-            filters: widget.filters,
-            child: widget.child,
-          );
-
-    return RepaintBoundary(
-      key: _key,
-      child: Stack(
-        children: [
-          Stack(
-            children: [
-              Positioned.fill(child: composition),
-              if (widget.showDistortions && widget.controller.isActive)
-                ...widget.controller.distortions.map(
-                  (e) => DistortionWidget(
-                    distortion: e,
-                    child: composition,
-                  ),
-                ),
-            ],
-          ),
-          if (widget.showColorChannels && widget.controller.isActive)
-            ...widget.controller.colorChannels.map(
-              (e) => ColorChannelWidget(
-                channel: e,
-                child: composition,
-              ),
-            ),
-        ],
-      ),
-    );
-  }
+  late final Ticker ticker;
+  double time=0.0;
 
   @override
   void initState() {
     super.initState();
-
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) {
-        widget.controller.bind(context.size!);
-        widget.controller.addListener(_rebuild);
-      },
-    );
-  }
-
-  @override
-  void didUpdateWidget(covariant AnimatedGlitchWithoutShader oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.controller != oldWidget.controller) {
-      oldWidget.controller.removeListener(_rebuild);
-
-      widget.controller.bind(context.size!);
-      widget.controller.addListener(_rebuild);
+    ticker=Ticker((duration)=>mounted ? setState(
+      ()=>time+=min<double>(duration.inMilliseconds.toDouble(),widget.speedStep)
+    ) : false);
+    if(widget.isActive){
+      ticker.start();
     }
   }
 
   @override
-  void dispose() {
-    widget.controller.removeListener(_rebuild);
+  void didUpdateWidget(covariant AnimatedGlitch oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if(oldWidget.isActive != widget.isActive){
+      widget.isActive ? ticker.start() : ticker.stop();
+    };
+  }
 
+  @override
+  void dispose() {
+    ticker.dispose();
     super.dispose();
   }
 
   @override
-  void setState(VoidCallback callback) {
-    if (mounted) super.setState(callback);
-  }
+  Widget build(BuildContext context) => ShaderBuilder(
+    (context,shader,child)=>AnimatedSampler(
+      (image,size,canvas){
+        shader
+          ..setFloat(0, widget.isActive ? time : 0.0)
+          // uResolution x
+          ..setFloat(1, size.width)
+          // uResolution y
+          ..setFloat(2, size.height)
+          // uDistortionLevel
+          ..setFloat(3, widget.distortionLevel)
+          // uColorChannelLevel
+          ..setFloat(4, widget.colorChannelLevel)
+          // uSpeed
+          ..setFloat(5, widget.speed)
+          // uChance
+          ..setFloat(6, widget.chance.toDouble())
+          // uShowDistortion
+          ..setFloat(7, widget.showDistortions ? 1.0 : 0.0)
+          // uShowColorChannel
+          ..setFloat(8, widget.showColorChannels ? 1.0 : 0.0)
+          // uShiftColorChannelsY
+          ..setFloat(9, widget.isColorsShiftedVertically ? 1.0 : 0.0)
+          // uShiftColorChannelsX
+          ..setFloat(10, widget.isColorsShiftedHorizontally ? 1.0 : 0.0)
+          // uGlitchAmount
+          ..setFloat(11, widget.glitchAmount)
+          // uChannel0
+          ..setImageSampler(0, image);
+        canvas.drawRect(Offset.zero & size, Paint()..shader = shader);
+      }, 
+      child: child!,
+    ),
+    assetKey: 'packages/animated_glitch/shader/glitch.frag',
+    child: widget.child,
+  );
 
-  void _rebuild() {
-    setState(() {});
-  }
 }
